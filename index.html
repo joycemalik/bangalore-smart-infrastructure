@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Infrastructure Command Center</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        darkBg: '#0f172a', /* Slate 900 */
+                        glass: 'rgba(255, 255, 255, 0.1)',
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        #map { height: 100vh; width: 100%; z-index: 10; }
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.7);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-right: 1px solid rgba(255,255,255,0.1);
+        }
+        @keyframes flashRed {
+            0% { background-color: rgba(239, 68, 68, 0.2); }
+            50% { background-color: rgba(239, 68, 68, 0.6); }
+            100% { background-color: rgba(239, 68, 68, 0.2); }
+        }
+        .alert-flash {
+            animation: flashRed 1s infinite;
+            border: 1px solid rgba(239, 68, 68, 0.8);
+        }
+        .custom-popup .leaflet-popup-content-wrapper {
+            background: rgba(15, 23, 42, 0.9);
+            color: white;
+            border-radius: 8px;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+        .custom-popup .leaflet-popup-tip {
+            background: rgba(15, 23, 42, 0.9);
+        }
+    </style>
+</head>
+<body class="bg-darkBg text-white overflow-hidden flex h-screen">
+
+    <!-- Sidebar (25%) -->
+    <aside id="sidebar" class="w-1/4 h-full glass-panel flex flex-col p-6 z-20 absolute left-0 top-0 bottom-0 shadow-2xl transition-all duration-300">
+        <div class="mb-8">
+            <h1 class="text-2xl font-bold tracking-wider text-blue-400 mb-2 uppercase">Command Center</h1>
+            <p class="text-sm text-gray-400 font-light">Bangalore Smart Infrastructure IoT</p>
+        </div>
+
+        <div class="flex-grow flex flex-col gap-6">
+            <!-- Metrics Card 1 -->
+            <div class="bg-white/5 rounded-xl p-5 border border-white/10 shadow-lg">
+                <h2 class="text-xs uppercase tracking-widest text-gray-500 mb-2">System Status</h2>
+                <div class="flex items-center gap-3">
+                    <div class="w-3 h-3 rounded-full bg-green-500 animate-pulse"></div>
+                    <span class="text-xl font-semibold">Online</span>
+                </div>
+            </div>
+
+            <!-- Metrics Card 2 -->
+            <div id="metrics-container" class="bg-white/5 rounded-xl p-5 border border-white/10 shadow-lg flex flex-col gap-4">
+                <div>
+                    <h2 class="text-xs uppercase tracking-widest text-gray-500 mb-1">Total Vehicles (Simulated)</h2>
+                    <span id="total-traffic" class="text-3xl font-bold text-blue-300">0</span>
+                </div>
+                <div>
+                    <h2 class="text-xs uppercase tracking-widest text-gray-500 mb-1">Avg Speed (km/h)</h2>
+                    <span id="avg-speed" class="text-3xl font-bold text-teal-300">0</span>
+                </div>
+            </div>
+
+            <!-- Alerts Card -->
+            <div id="alert-panel" class="rounded-xl p-5 border border-white/10 shadow-lg bg-white/5 transition-all duration-300">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xs uppercase tracking-widest text-gray-500">Active Alerts</h2>
+                    <span id="alert-count" class="bg-gray-700 text-xs px-2 py-1 rounded text-white">0</span>
+                </div>
+                <div id="alert-list" class="text-sm text-gray-300 flex flex-col gap-2">
+                    <div class="text-gray-500 italic">No active alerts. System nominal.</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="mt-auto pt-6 border-t border-white/10 text-xs text-gray-600 text-center">
+            Last Updated: <span id="last-updated">--</span>
+        </div>
+    </aside>
+
+    <!-- Main Map Area (75%) -->
+    <main class="w-full h-full absolute right-0 top-0 bottom-0" style="padding-left: 25%;">
+        <div id="map"></div>
+    </main>
+
+    <script>
+        // Initialize Map
+        // Centered on Bangalore
+        const map = L.map('map', {
+            zoomControl: false // Move to bottom right later
+        }).setView([12.9716, 77.5946], 11);
+
+        L.control.zoom({
+            position: 'bottomright'
+        }).addTo(map);
+
+        // Dark theme tile layer (CartoDB Dark Matter)
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+            subdomains: 'abcd',
+            maxZoom: 20
+        }).addTo(map);
+
+        // Custom Marker Icons
+        const createIcon = (color) => {
+            return L.divIcon({
+                className: 'custom-div-icon',
+                html: `<div style="background-color: ${color}; width: 16px; height: 16px; border-radius: 50%; border: 3px solid #1e293b; box-shadow: 0 0 10px ${color};"></div>`,
+                iconSize: [16, 16],
+                iconAnchor: [8, 8]
+            });
+        };
+
+        const greenIcon = createIcon('#22c55e');
+        const redIcon = createIcon('#ef4444');
+        const yellowIcon = createIcon('#eab308');
+
+        // Store markers by location name
+        const markers = {};
+
+        // Update UI Function
+        async function fetchStatus() {
+            try {
+                const response = await fetch('http://localhost:8000/status');
+                const data = await response.json();
+                
+                let activeAlerts = 0;
+                let alertHtml = '';
+                let totalTraffic = 0;
+                let speedSum = 0;
+                let speedCount = 0;
+
+                const alertPanel = document.getElementById('alert-panel');
+
+                // Process data
+                data.forEach(item => {
+                    let isAlert = false;
+                    let displayValue = '';
+                    let statusColor = '#22c55e'; // default green
+
+                    // Formatting and Logic
+                    if (item.type === 'bridge') {
+                        displayValue = `Structural Health: ${(item.value * 100).toFixed(1)}%`;
+                        if (item.value < 0.8) {
+                            isAlert = true;
+                            statusColor = '#ef4444'; // red
+                            alertHtml += `<div class="p-2 bg-red-500/20 border border-red-500/50 rounded text-red-200">
+                                <strong>Critical:</strong> ${item.location} bridge health degraded to ${(item.value * 100).toFixed(1)}%
+                            </div>`;
+                            activeAlerts++;
+                        }
+                    } else if (item.type === 'traffic') {
+                        totalTraffic += Math.round(item.value * 10); // arbitrary scaling
+                        displayValue = `Density: ${item.value.toFixed(1)}%`;
+                        if (item.value > 90.0) {
+                            statusColor = '#eab308'; // yellow ping
+                        }
+                    } else if (item.type === 'speed') {
+                        speedSum += item.value;
+                        speedCount++;
+                        displayValue = `Speed: ${item.value.toFixed(1)} km/h`;
+                    }
+
+                    // Update Map Marker
+                    if (!markers[item.location]) {
+                        markers[item.location] = L.marker([item.lat, item.lng], { icon: greenIcon })
+                            .addTo(map)
+                            .bindPopup(`<b>${item.location}</b><br><span id="popup-${item.location.replace(/\s+/g, '-')}">${displayValue}</span>`, {
+                                className: 'custom-popup'
+                            });
+                    } else {
+                        // Update existing marker
+                        const newIcon = isAlert ? redIcon : (statusColor === '#eab308' ? yellowIcon : greenIcon);
+                        markers[item.location].setIcon(newIcon);
+                        
+                        // Update popup content if open
+                        const popupEl = document.getElementById(`popup-${item.location.replace(/\s+/g, '-')}`);
+                        if (popupEl) {
+                            popupEl.innerHTML = displayValue;
+                        } else {
+                            // Update hidden content 
+                            markers[item.location].setPopupContent(`<b>${item.location}</b><br><span id="popup-${item.location.replace(/\s+/g, '-')}">${displayValue}</span>`);
+                        }
+                    }
+                });
+
+                // Update Sidebar Text
+                document.getElementById('total-traffic').innerText = totalTraffic.toLocaleString();
+                if (speedCount > 0) {
+                    document.getElementById('avg-speed').innerText = (speedSum / speedCount).toFixed(1);
+                }
+
+                document.getElementById('alert-count').innerText = activeAlerts;
+                
+                // Update styling based on alerts
+                if (activeAlerts > 0) {
+                    document.getElementById('alert-count').className = 'bg-red-500 text-xs px-2 py-1 rounded font-bold text-white';
+                    document.getElementById('alert-list').innerHTML = alertHtml;
+                    alertPanel.classList.add('alert-flash');
+                } else {
+                    document.getElementById('alert-count').className = 'bg-gray-700 text-xs px-2 py-1 rounded text-white';
+                    document.getElementById('alert-list').innerHTML = '<div class="text-gray-500 italic">No active alerts. System nominal.</div>';
+                    alertPanel.classList.remove('alert-flash');
+                }
+
+                // Update timestamp
+                const now = new Date();
+                document.getElementById('last-updated').innerText = now.toLocaleTimeString();
+
+            } catch (error) {
+                console.error("Failed to fetch telemetry data", error);
+                document.getElementById('last-updated').innerText = "Connection Error";
+                document.getElementById('last-updated').classList.add("text-red-500");
+            }
+        }
+
+        // Fetch immediately, then every 2 seconds
+        fetchStatus();
+        setInterval(fetchStatus, 2000);
+
+    </script>
+</body>
+</html>
