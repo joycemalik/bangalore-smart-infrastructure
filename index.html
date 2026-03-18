@@ -1,245 +1,534 @@
 <!DOCTYPE html>
 <html lang="en" class="dark">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Smart Infrastructure Command Center</title>
-    <!-- Tailwind CSS -->
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bangalore Smart Infrastructure — Command & Control</title>
+    <meta name="description" content="Real-time highway, bridge, and traffic management system for Bangalore smart city infrastructure." />
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
             darkMode: 'class',
             theme: {
                 extend: {
+                    fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
                     colors: {
-                        darkBg: '#0f172a', /* Slate 900 */
-                        glass: 'rgba(255, 255, 255, 0.1)',
-                    }
-                }
-            }
-        }
+                        surface: { 900: '#0b1120', 800: '#111827', 700: '#1e293b' },
+                        accent: { cyan: '#06b6d4', blue: '#3b82f6', emerald: '#10b981' },
+                    },
+                },
+            },
+        };
     </script>
-    <!-- Leaflet CSS -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
-    <!-- Leaflet JS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
     <style>
-        body { font-family: 'Inter', sans-serif; }
-        #map { height: 100vh; width: 100%; z-index: 10; }
-        .glass-panel {
-            background: rgba(15, 23, 42, 0.7);
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
-            border-right: 1px solid rgba(255,255,255,0.1);
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Inter', system-ui, sans-serif; background: #0b1120; color: #e2e8f0; overflow: hidden; }
+        #map { height: 100vh; width: 100%; }
+        .glass {
+            background: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
         }
-        @keyframes flashRed {
-            0% { background-color: rgba(239, 68, 68, 0.2); }
-            50% { background-color: rgba(239, 68, 68, 0.6); }
-            100% { background-color: rgba(239, 68, 68, 0.2); }
+        .glass-light {
+            background: rgba(30, 41, 59, 0.6);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.06);
         }
-        .alert-flash {
-            animation: flashRed 1s infinite;
-            border: 1px solid rgba(239, 68, 68, 0.8);
+        .scrollbar-thin::-webkit-scrollbar { width: 4px; }
+        .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+        .scrollbar-thin::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 4px; }
+        @keyframes pulse-red {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.5); }
+            50% { box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
         }
+        .pulse-critical { animation: pulse-red 1.5s infinite; }
+        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        .slide-in { animation: slideIn 0.3s ease-out forwards; }
+        @keyframes slideOut { from { transform: translateX(0); opacity: 1; } to { transform: translateX(100%); opacity: 0; } }
+        .slide-out { animation: slideOut 0.25s ease-in forwards; }
         .custom-popup .leaflet-popup-content-wrapper {
-            background: rgba(15, 23, 42, 0.9);
-            color: white;
-            border-radius: 8px;
-            border: 1px solid rgba(255,255,255,0.2);
+            background: rgba(15, 23, 42, 0.95);
+            color: #e2e8f0; border-radius: 10px;
+            border: 1px solid rgba(6, 182, 212, 0.3);
+            box-shadow: 0 4px 30px rgba(6, 182, 212, 0.1);
         }
-        .custom-popup .leaflet-popup-tip {
-            background: rgba(15, 23, 42, 0.9);
+        .custom-popup .leaflet-popup-tip { background: rgba(15, 23, 42, 0.95); }
+        .custom-popup .leaflet-popup-content { margin: 8px 12px; line-height: 1.5; }
+        .leaflet-control-zoom a {
+            background: rgba(15, 23, 42, 0.85) !important;
+            color: #94a3b8 !important;
+            border-color: rgba(255,255,255,0.1) !important;
         }
+        .stat-value { font-variant-numeric: tabular-nums; }
+        .badge {
+            display: inline-flex; align-items: center; gap: 4px;
+            padding: 2px 8px; border-radius: 9999px; font-size: 0.65rem;
+            font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;
+        }
+        .badge-critical { background: rgba(239,68,68,0.2); color: #fca5a5; border: 1px solid rgba(239,68,68,0.3); }
+        .badge-warning { background: rgba(234,179,8,0.2); color: #fde047; border: 1px solid rgba(234,179,8,0.3); }
+        .badge-normal { background: rgba(16,185,129,0.2); color: #6ee7b7; border: 1px solid rgba(16,185,129,0.3); }
+        .action-btn {
+            transition: all 0.2s ease;
+            position: relative; overflow: hidden;
+        }
+        .action-btn:hover { transform: translateY(-1px); }
+        .action-btn:active { transform: translateY(0); }
+        .action-btn::after {
+            content: ''; position: absolute; inset: 0;
+            background: linear-gradient(135deg, rgba(255,255,255,0.1), transparent);
+            opacity: 0; transition: opacity 0.2s;
+        }
+        .action-btn:hover::after { opacity: 1; }
     </style>
 </head>
-<body class="bg-darkBg text-white overflow-hidden flex h-screen">
+<body class="flex h-screen w-screen">
 
-    <!-- Sidebar (25%) -->
-    <aside id="sidebar" class="w-1/4 h-full glass-panel flex flex-col p-6 z-20 absolute left-0 top-0 bottom-0 shadow-2xl transition-all duration-300">
-        <div class="mb-8">
-            <h1 class="text-2xl font-bold tracking-wider text-blue-400 mb-2 uppercase">Command Center</h1>
-            <p class="text-sm text-gray-400 font-light">Bangalore Smart Infrastructure IoT</p>
+    <!-- ─── LEFT SIDEBAR: GLOBAL STATUS ─── -->
+    <aside id="left-panel" class="w-[20%] min-w-[280px] h-full glass flex flex-col z-30 relative">
+        <!-- Header -->
+        <div class="p-5 border-b border-white/5">
+            <div class="flex items-center gap-3 mb-1">
+                <div class="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-pulse"></div>
+                <h1 class="text-base font-bold tracking-wider text-cyan-400 uppercase">Command Center</h1>
+            </div>
+            <p class="text-[11px] text-slate-500 ml-[22px]">Bangalore Smart Infrastructure v2.0</p>
         </div>
 
-        <div class="flex-grow flex flex-col gap-6">
-            <!-- Metrics Card 1 -->
-            <div class="bg-white/5 rounded-xl p-5 border border-white/10 shadow-lg">
-                <h2 class="text-xs uppercase tracking-widest text-gray-500 mb-2">System Status</h2>
-                <div class="flex items-center gap-3">
-                    <div class="w-3 h-3 rounded-full bg-green-500 animate-pulse"></div>
-                    <span class="text-xl font-semibold">Online</span>
+        <!-- Key Stats -->
+        <div class="p-4 space-y-3 border-b border-white/5">
+            <div class="grid grid-cols-2 gap-3">
+                <div class="glass-light rounded-lg p-3">
+                    <div class="text-[10px] uppercase tracking-widest text-slate-500 mb-1">Total Vehicles</div>
+                    <div id="stat-vehicles" class="text-xl font-bold text-blue-400 stat-value">—</div>
                 </div>
-            </div>
-
-            <!-- Metrics Card 2 -->
-            <div id="metrics-container" class="bg-white/5 rounded-xl p-5 border border-white/10 shadow-lg flex flex-col gap-4">
-                <div>
-                    <h2 class="text-xs uppercase tracking-widest text-gray-500 mb-1">Total Vehicles (Simulated)</h2>
-                    <span id="total-traffic" class="text-3xl font-bold text-blue-300">0</span>
+                <div class="glass-light rounded-lg p-3">
+                    <div class="text-[10px] uppercase tracking-widest text-slate-500 mb-1">Avg Speed</div>
+                    <div id="stat-speed" class="text-xl font-bold text-emerald-400 stat-value">— <span class="text-xs font-normal text-slate-500">km/h</span></div>
                 </div>
-                <div>
-                    <h2 class="text-xs uppercase tracking-widest text-gray-500 mb-1">Avg Speed (km/h)</h2>
-                    <span id="avg-speed" class="text-3xl font-bold text-teal-300">0</span>
+                <div class="glass-light rounded-lg p-3">
+                    <div class="text-[10px] uppercase tracking-widest text-slate-500 mb-1">Active Nodes</div>
+                    <div id="stat-nodes" class="text-xl font-bold text-cyan-400 stat-value">—</div>
                 </div>
-            </div>
-
-            <!-- Alerts Card -->
-            <div id="alert-panel" class="rounded-xl p-5 border border-white/10 shadow-lg bg-white/5 transition-all duration-300">
-                <div class="flex justify-between items-center mb-4">
-                    <h2 class="text-xs uppercase tracking-widest text-gray-500">Active Alerts</h2>
-                    <span id="alert-count" class="bg-gray-700 text-xs px-2 py-1 rounded text-white">0</span>
-                </div>
-                <div id="alert-list" class="text-sm text-gray-300 flex flex-col gap-2">
-                    <div class="text-gray-500 italic">No active alerts. System nominal.</div>
+                <div class="glass-light rounded-lg p-3">
+                    <div class="text-[10px] uppercase tracking-widest text-slate-500 mb-1">Alerts</div>
+                    <div id="stat-alerts" class="text-xl font-bold text-red-400 stat-value">0</div>
                 </div>
             </div>
         </div>
-        
-        <div class="mt-auto pt-6 border-t border-white/10 text-xs text-gray-600 text-center">
-            Last Updated: <span id="last-updated">--</span>
+
+        <!-- Network Overview -->
+        <div class="p-4 border-b border-white/5">
+            <h2 class="text-[10px] uppercase tracking-widest text-slate-500 mb-3">Network Overview</h2>
+            <div id="network-list" class="space-y-2 max-h-[180px] overflow-y-auto scrollbar-thin">
+                <div class="text-xs text-slate-600 italic">Loading...</div>
+            </div>
+        </div>
+
+        <!-- Alert Feed -->
+        <div class="p-4 flex-1 flex flex-col min-h-0">
+            <div class="flex items-center justify-between mb-3">
+                <h2 class="text-[10px] uppercase tracking-widest text-slate-500">Live Alert Feed</h2>
+                <span id="alert-badge" class="badge badge-normal">OK</span>
+            </div>
+            <div id="alert-feed" class="flex-1 overflow-y-auto scrollbar-thin space-y-2">
+                <div class="text-xs text-slate-600 italic">System nominal. No alerts.</div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="p-3 border-t border-white/5 flex items-center justify-between text-[10px] text-slate-600">
+            <span>Last sync: <span id="last-sync">—</span></span>
+            <span id="connection-status" class="flex items-center gap-1">
+                <span class="w-1.5 h-1.5 rounded-full bg-green-500"></span> Connected
+            </span>
         </div>
     </aside>
 
-    <!-- Main Map Area (75%) -->
-    <main class="w-full h-full absolute right-0 top-0 bottom-0" style="padding-left: 25%;">
+    <!-- ─── CENTER: MAP ─── -->
+    <main class="flex-1 h-full relative z-10">
         <div id="map"></div>
     </main>
 
+    <!-- ─── RIGHT SIDEBAR: NODE DETAILS & ACTIONS ─── -->
+    <aside id="right-panel" class="w-[20%] min-w-[300px] h-full glass flex flex-col z-30 relative hidden">
+        <!-- Close Button -->
+        <div class="p-4 border-b border-white/5 flex items-center justify-between">
+            <h2 class="text-sm font-semibold text-cyan-400 uppercase tracking-wider">Node Inspector</h2>
+            <button id="close-right" class="text-slate-500 hover:text-white transition-colors p-1 rounded hover:bg-white/10" title="Close Panel">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>
+
+        <!-- Node Info -->
+        <div class="p-4 border-b border-white/5">
+            <div class="flex items-center gap-3 mb-3">
+                <div id="node-status-dot" class="w-3 h-3 rounded-full bg-green-500"></div>
+                <div>
+                    <div id="node-name" class="text-sm font-semibold text-white">—</div>
+                    <div id="node-id" class="text-[10px] text-slate-500 font-mono">—</div>
+                </div>
+            </div>
+            <div id="node-type-badge" class="badge badge-normal mb-3">—</div>
+        </div>
+
+        <!-- Node Metrics -->
+        <div class="p-4 border-b border-white/5 space-y-3">
+            <h3 class="text-[10px] uppercase tracking-widest text-slate-500 mb-2">Live Metrics</h3>
+            <div id="node-metrics" class="space-y-2">
+                <div class="text-xs text-slate-600 italic">Select a node...</div>
+            </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="p-4 space-y-3">
+            <h3 class="text-[10px] uppercase tracking-widest text-slate-500 mb-2">Actions</h3>
+            <button id="btn-dispatch" class="action-btn w-full py-2.5 px-4 rounded-lg bg-gradient-to-r from-red-600 to-red-500 text-white text-xs font-semibold uppercase tracking-wider hover:shadow-lg hover:shadow-red-500/20 disabled:opacity-40 disabled:cursor-not-allowed" disabled>
+                🚨 Dispatch Emergency Vehicle
+            </button>
+            <button id="btn-signal" class="action-btn w-full py-2.5 px-4 rounded-lg bg-gradient-to-r from-amber-600 to-yellow-500 text-white text-xs font-semibold uppercase tracking-wider hover:shadow-lg hover:shadow-yellow-500/20 disabled:opacity-40 disabled:cursor-not-allowed" disabled>
+                🚦 Adjust Signal Timing
+            </button>
+            <div id="action-feedback" class="hidden glass-light rounded-lg p-3 text-xs text-emerald-300 mt-3"></div>
+        </div>
+
+        <!-- Action Log -->
+        <div class="p-4 flex-1 flex flex-col min-h-0 border-t border-white/5">
+            <h3 class="text-[10px] uppercase tracking-widest text-slate-500 mb-2">Action Log</h3>
+            <div id="action-log" class="flex-1 overflow-y-auto scrollbar-thin space-y-1.5">
+                <div class="text-xs text-slate-600 italic">No actions yet.</div>
+            </div>
+        </div>
+    </aside>
+
     <script>
-        // Initialize Map
-        // Centered on Bangalore
-        const map = L.map('map', {
-            zoomControl: false // Move to bottom right later
-        }).setView([12.9716, 77.5946], 11);
+    // ──────────────────────────────────────────────────────────────
+    // MAP INIT
+    // ──────────────────────────────────────────────────────────────
+    const map = L.map('map', { zoomControl: false }).setView([12.9716, 77.5946], 12);
+    L.control.zoom({ position: 'bottomright' }).addTo(map);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>',
+        subdomains: 'abcd', maxZoom: 19, detectRetina: true,
+    }).addTo(map);
 
-        L.control.zoom({
-            position: 'bottomright'
-        }).addTo(map);
+    // ──────────────────────────────────────────────────────────────
+    // STATE
+    // ──────────────────────────────────────────────────────────────
+    let mapLayers = L.layerGroup().addTo(map);
+    let selectedNodeId = null;
+    let latestState = null;
 
-        // Dark theme tile layer (CartoDB Dark Matter)
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-            subdomains: 'abcd',
-            maxZoom: 20
-        }).addTo(map);
+    // ──────────────────────────────────────────────────────────────
+    // COLOR HELPERS
+    // ──────────────────────────────────────────────────────────────
+    function speedColor(speed) {
+        if (speed > 40) return '#10b981';  // green
+        if (speed > 20) return '#eab308';  // yellow
+        return '#ef4444';                   // red
+    }
 
-        // Custom Marker Icons
-        const createIcon = (color) => {
-            return L.divIcon({
-                className: 'custom-div-icon',
-                html: `<div style="background-color: ${color}; width: 16px; height: 16px; border-radius: 50%; border: 3px solid #1e293b; box-shadow: 0 0 10px ${color};"></div>`,
-                iconSize: [16, 16],
-                iconAnchor: [8, 8]
+    function healthColor(h) {
+        if (h >= 0.85) return '#10b981';
+        if (h >= 0.7) return '#eab308';
+        return '#ef4444';
+    }
+
+    function statusBadge(status) {
+        if (status === 'critical') return '<span class="badge badge-critical">● Critical</span>';
+        if (status === 'congested' || status === 'warning') return '<span class="badge badge-warning">● Warning</span>';
+        return '<span class="badge badge-normal">● Normal</span>';
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // METRIC ROW BUILDER
+    // ──────────────────────────────────────────────────────────────
+    function metricRow(label, value, color) {
+        return `<div class="flex items-center justify-between py-1.5 border-b border-white/5">
+            <span class="text-[11px] text-slate-400">${label}</span>
+            <span class="text-sm font-semibold stat-value" style="color:${color || '#e2e8f0'}">${value}</span>
+        </div>`;
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // RIGHT PANEL MANAGEMENT
+    // ──────────────────────────────────────────────────────────────
+    const rightPanel = document.getElementById('right-panel');
+    const closeBtn = document.getElementById('close-right');
+
+    function openRightPanel(nodeId) {
+        selectedNodeId = nodeId;
+        rightPanel.classList.remove('hidden', 'slide-out');
+        rightPanel.classList.add('slide-in');
+        document.getElementById('btn-dispatch').disabled = false;
+        document.getElementById('btn-signal').disabled = false;
+        document.getElementById('action-feedback').classList.add('hidden');
+        updateNodeDetails();
+    }
+
+    function closeRightPanel() {
+        rightPanel.classList.remove('slide-in');
+        rightPanel.classList.add('slide-out');
+        setTimeout(() => { rightPanel.classList.add('hidden'); rightPanel.classList.remove('slide-out'); }, 250);
+        selectedNodeId = null;
+    }
+
+    closeBtn.addEventListener('click', closeRightPanel);
+
+    function updateNodeDetails() {
+        if (!selectedNodeId || !latestState) return;
+
+        let node = null;
+        let category = '';
+        for (const h of latestState.highways) { if (h.id === selectedNodeId) { node = h; category = 'Highway'; break; } }
+        if (!node) for (const r of latestState.roads) { if (r.id === selectedNodeId) { node = r; category = 'Arterial Road'; break; } }
+        if (!node) for (const b of latestState.bridges) { if (b.id === selectedNodeId) { node = b; category = 'Bridge'; break; } }
+        if (!node) return;
+
+        document.getElementById('node-name').textContent = node.name;
+        document.getElementById('node-id').textContent = node.id;
+
+        const dot = document.getElementById('node-status-dot');
+        dot.className = 'w-3 h-3 rounded-full';
+        if (node.status === 'critical') { dot.classList.add('bg-red-500', 'pulse-critical'); }
+        else if (node.status === 'congested' || node.status === 'warning') { dot.classList.add('bg-yellow-500'); }
+        else { dot.classList.add('bg-emerald-500'); }
+
+        document.getElementById('node-type-badge').outerHTML = `<div id="node-type-badge" class="badge ${node.status === 'critical' ? 'badge-critical' : node.status === 'congested' || node.status === 'warning' ? 'badge-warning' : 'badge-normal'}">${category}</div>`;
+
+        const metricsEl = document.getElementById('node-metrics');
+        if (category === 'Bridge') {
+            const hc = healthColor(node.health_index);
+            metricsEl.innerHTML =
+                metricRow('Health Index', `${(node.health_index * 100).toFixed(1)}%`, hc) +
+                metricRow('Vibration', `${node.vibration_hz} Hz`, node.vibration_hz > 8 ? '#ef4444' : '#e2e8f0') +
+                metricRow('Load', `${node.load_tons.toFixed(0)} tons`, node.load_tons > 120 ? '#ef4444' : '#e2e8f0') +
+                metricRow('Last Inspection', node.last_inspection, '#94a3b8') +
+                metricRow('Status', node.status.toUpperCase(), hc);
+        } else {
+            const sc = speedColor(node.speed_kmh);
+            metricsEl.innerHTML =
+                metricRow('Speed', `${node.speed_kmh.toFixed(1)} km/h`, sc) +
+                metricRow('Congestion', `${node.congestion_pct.toFixed(0)}%`, node.congestion_pct > 80 ? '#ef4444' : node.congestion_pct > 55 ? '#eab308' : '#10b981') +
+                metricRow('Vehicles', node.vehicle_count.toLocaleString(), '#e2e8f0') +
+                metricRow('Lanes', node.lanes, '#94a3b8') +
+                metricRow('Status', node.status.toUpperCase(), sc);
+        }
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // ACTION BUTTONS
+    // ──────────────────────────────────────────────────────────────
+    async function sendAction(actionType) {
+        if (!selectedNodeId) return;
+        const feedbackEl = document.getElementById('action-feedback');
+        try {
+            const resp = await fetch(`http://localhost:8000/action/${selectedNodeId}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: actionType, node_id: selectedNodeId }),
             });
-        };
+            const data = await resp.json();
+            feedbackEl.textContent = `✓ ${data.result}`;
+            feedbackEl.classList.remove('hidden', 'text-red-300');
+            feedbackEl.classList.add('text-emerald-300');
+            setTimeout(() => feedbackEl.classList.add('hidden'), 5000);
+        } catch (err) {
+            feedbackEl.textContent = `✗ Action failed: ${err.message}`;
+            feedbackEl.classList.remove('hidden', 'text-emerald-300');
+            feedbackEl.classList.add('text-red-300');
+        }
+    }
 
-        const greenIcon = createIcon('#22c55e');
-        const redIcon = createIcon('#ef4444');
-        const yellowIcon = createIcon('#eab308');
+    document.getElementById('btn-dispatch').addEventListener('click', () => sendAction('dispatch_patrol'));
+    document.getElementById('btn-signal').addEventListener('click', () => sendAction('adjust_signal'));
 
-        // Store markers by location name
-        const markers = {};
+    // ──────────────────────────────────────────────────────────────
+    // MAP RENDERING
+    // ──────────────────────────────────────────────────────────────
+    function renderMap(data) {
+        mapLayers.clearLayers();
 
-        // Update UI Function
-        async function fetchStatus() {
-            try {
-                const response = await fetch('http://localhost:8000/status');
-                const data = await response.json();
-                
-                let activeAlerts = 0;
-                let alertHtml = '';
-                let totalTraffic = 0;
-                let speedSum = 0;
-                let speedCount = 0;
+        // Draw Highways (thick lines)
+        data.highways.forEach(h => {
+            const color = speedColor(h.speed_kmh);
+            const line = L.polyline(h.path, {
+                color: color, weight: 6, opacity: 0.85,
+                lineCap: 'round', lineJoin: 'round',
+                className: h.status === 'critical' ? 'pulse-critical' : '',
+            }).addTo(mapLayers);
+            line.bindPopup(`<b>${h.name}</b><br>Speed: ${h.speed_kmh} km/h | Congestion: ${h.congestion_pct}%`, { className: 'custom-popup' });
+            line.on('click', () => openRightPanel(h.id));
 
-                const alertPanel = document.getElementById('alert-panel');
-
-                // Process data
-                data.forEach(item => {
-                    let isAlert = false;
-                    let displayValue = '';
-                    let statusColor = '#22c55e'; // default green
-
-                    // Formatting and Logic
-                    if (item.type === 'bridge') {
-                        displayValue = `Structural Health: ${(item.value * 100).toFixed(1)}%`;
-                        if (item.value < 0.8) {
-                            isAlert = true;
-                            statusColor = '#ef4444'; // red
-                            alertHtml += `<div class="p-2 bg-red-500/20 border border-red-500/50 rounded text-red-200">
-                                <strong>Critical:</strong> ${item.location} bridge health degraded to ${(item.value * 100).toFixed(1)}%
-                            </div>`;
-                            activeAlerts++;
-                        }
-                    } else if (item.type === 'traffic') {
-                        totalTraffic += Math.round(item.value * 10); // arbitrary scaling
-                        displayValue = `Density: ${item.value.toFixed(1)}%`;
-                        if (item.value > 90.0) {
-                            statusColor = '#eab308'; // yellow ping
-                        }
-                    } else if (item.type === 'speed') {
-                        speedSum += item.value;
-                        speedCount++;
-                        displayValue = `Speed: ${item.value.toFixed(1)} km/h`;
-                    }
-
-                    // Update Map Marker
-                    if (!markers[item.location]) {
-                        markers[item.location] = L.marker([item.lat, item.lng], { icon: greenIcon })
-                            .addTo(map)
-                            .bindPopup(`<b>${item.location}</b><br><span id="popup-${item.location.replace(/\s+/g, '-')}">${displayValue}</span>`, {
-                                className: 'custom-popup'
-                            });
-                    } else {
-                        // Update existing marker
-                        const newIcon = isAlert ? redIcon : (statusColor === '#eab308' ? yellowIcon : greenIcon);
-                        markers[item.location].setIcon(newIcon);
-                        
-                        // Update popup content if open
-                        const popupEl = document.getElementById(`popup-${item.location.replace(/\s+/g, '-')}`);
-                        if (popupEl) {
-                            popupEl.innerHTML = displayValue;
-                        } else {
-                            // Update hidden content 
-                            markers[item.location].setPopupContent(`<b>${item.location}</b><br><span id="popup-${item.location.replace(/\s+/g, '-')}">${displayValue}</span>`);
-                        }
-                    }
-                });
-
-                // Update Sidebar Text
-                document.getElementById('total-traffic').innerText = totalTraffic.toLocaleString();
-                if (speedCount > 0) {
-                    document.getElementById('avg-speed').innerText = (speedSum / speedCount).toFixed(1);
-                }
-
-                document.getElementById('alert-count').innerText = activeAlerts;
-                
-                // Update styling based on alerts
-                if (activeAlerts > 0) {
-                    document.getElementById('alert-count').className = 'bg-red-500 text-xs px-2 py-1 rounded font-bold text-white';
-                    document.getElementById('alert-list').innerHTML = alertHtml;
-                    alertPanel.classList.add('alert-flash');
-                } else {
-                    document.getElementById('alert-count').className = 'bg-gray-700 text-xs px-2 py-1 rounded text-white';
-                    document.getElementById('alert-list').innerHTML = '<div class="text-gray-500 italic">No active alerts. System nominal.</div>';
-                    alertPanel.classList.remove('alert-flash');
-                }
-
-                // Update timestamp
-                const now = new Date();
-                document.getElementById('last-updated').innerText = now.toLocaleTimeString();
-
-            } catch (error) {
-                console.error("Failed to fetch telemetry data", error);
-                document.getElementById('last-updated').innerText = "Connection Error";
-                document.getElementById('last-updated').classList.add("text-red-500");
+            // Direction arrows via mid-point markers
+            if (h.path.length >= 2) {
+                const mid = [
+                    (h.path[0][0] + h.path[h.path.length - 1][0]) / 2,
+                    (h.path[0][1] + h.path[h.path.length - 1][1]) / 2,
+                ];
+                L.circleMarker(mid, {
+                    radius: 3, fillColor: color, fillOpacity: 1,
+                    color: '#0b1120', weight: 2,
+                }).addTo(mapLayers);
             }
+        });
+
+        // Draw Roads (thinner lines)
+        data.roads.forEach(r => {
+            const color = speedColor(r.speed_kmh);
+            const line = L.polyline(r.path, {
+                color: color, weight: 4, opacity: 0.75,
+                dashArray: r.status === 'congested' ? '8 4' : null,
+            }).addTo(mapLayers);
+            line.bindPopup(`<b>${r.name}</b><br>Speed: ${r.speed_kmh} km/h | Congestion: ${r.congestion_pct}%`, { className: 'custom-popup' });
+            line.on('click', () => openRightPanel(r.id));
+        });
+
+        // Draw Bridges (circle markers)
+        data.bridges.forEach(b => {
+            const color = healthColor(b.health_index);
+            const isCritical = b.status === 'critical';
+            const marker = L.circleMarker([b.lat, b.lng], {
+                radius: isCritical ? 12 : 9,
+                fillColor: color,
+                fillOpacity: isCritical ? 0.9 : 0.7,
+                color: isCritical ? '#ef4444' : '#0b1120',
+                weight: isCritical ? 3 : 2,
+                className: isCritical ? 'pulse-critical' : '',
+            }).addTo(mapLayers);
+            marker.bindPopup(`<b>🌉 ${b.name}</b><br>Health: ${(b.health_index * 100).toFixed(1)}% | Vibration: ${b.vibration_hz}Hz`, { className: 'custom-popup' });
+            marker.on('click', () => openRightPanel(b.id));
+
+            // Label
+            L.marker([b.lat, b.lng], {
+                icon: L.divIcon({
+                    className: 'bridge-label',
+                    html: `<div style="color:${color};font-size:9px;font-weight:600;text-shadow:0 1px 3px rgba(0,0,0,0.8);white-space:nowrap;transform:translateX(-50%);margin-top:14px">${b.name}</div>`,
+                    iconSize: [0, 0],
+                }),
+                interactive: false,
+            }).addTo(mapLayers);
+        });
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // SIDEBAR UPDATE
+    // ──────────────────────────────────────────────────────────────
+    function updateSidebar(data) {
+        // Total vehicles
+        let totalVehicles = 0;
+        let totalSpeed = 0;
+        let speedCount = 0;
+        data.highways.forEach(h => { totalVehicles += h.vehicle_count; totalSpeed += h.speed_kmh; speedCount++; });
+        data.roads.forEach(r => { totalVehicles += r.vehicle_count; totalSpeed += r.speed_kmh; speedCount++; });
+        document.getElementById('stat-vehicles').textContent = totalVehicles.toLocaleString();
+        document.getElementById('stat-speed').innerHTML = speedCount > 0
+            ? `${(totalSpeed / speedCount).toFixed(0)} <span class="text-xs font-normal text-slate-500">km/h</span>` : '—';
+        document.getElementById('stat-nodes').textContent = data.highways.length + data.roads.length + data.bridges.length;
+
+        // Count critical alerts
+        const criticals = [...data.highways, ...data.roads].filter(n => n.status === 'critical').length
+                        + data.bridges.filter(b => b.status === 'critical' || b.status === 'warning').length;
+        const alertEl = document.getElementById('stat-alerts');
+        alertEl.textContent = criticals;
+        alertEl.className = criticals > 0 ? 'text-xl font-bold text-red-400 stat-value' : 'text-xl font-bold text-emerald-400 stat-value';
+
+        const alertBadge = document.getElementById('alert-badge');
+        if (criticals > 2) { alertBadge.className = 'badge badge-critical'; alertBadge.textContent = `${criticals} ACTIVE`; }
+        else if (criticals > 0) { alertBadge.className = 'badge badge-warning'; alertBadge.textContent = `${criticals} ACTIVE`; }
+        else { alertBadge.className = 'badge badge-normal'; alertBadge.textContent = 'OK'; }
+
+        // Network list
+        const netEl = document.getElementById('network-list');
+        let netHtml = '';
+        data.highways.forEach(h => {
+            netHtml += `<div class="flex items-center justify-between py-1 cursor-pointer hover:bg-white/5 px-2 rounded transition-colors" onclick="openRightPanel('${h.id}')">
+                <span class="text-[11px] text-slate-300 truncate max-w-[65%]">🛣️ ${h.name}</span>${statusBadge(h.status)}</div>`;
+        });
+        data.roads.forEach(r => {
+            netHtml += `<div class="flex items-center justify-between py-1 cursor-pointer hover:bg-white/5 px-2 rounded transition-colors" onclick="openRightPanel('${r.id}')">
+                <span class="text-[11px] text-slate-300 truncate max-w-[65%]">🚗 ${r.name}</span>${statusBadge(r.status)}</div>`;
+        });
+        data.bridges.forEach(b => {
+            netHtml += `<div class="flex items-center justify-between py-1 cursor-pointer hover:bg-white/5 px-2 rounded transition-colors" onclick="openRightPanel('${b.id}')">
+                <span class="text-[11px] text-slate-300 truncate max-w-[65%]">🌉 ${b.name}</span>${statusBadge(b.status)}</div>`;
+        });
+        netEl.innerHTML = netHtml;
+
+        // Alert feed
+        const feedEl = document.getElementById('alert-feed');
+        if (data.alerts && data.alerts.length > 0) {
+            const recent = data.alerts.slice(-15).reverse();
+            feedEl.innerHTML = recent.map(a => {
+                const ts = new Date(a.ts * 1000).toLocaleTimeString();
+                const isCrit = a.severity === 'critical';
+                return `<div class="glass-light rounded-lg p-2.5 ${isCrit ? 'border border-red-500/30' : 'border border-yellow-500/20'}">
+                    <div class="flex items-center gap-2 mb-0.5">
+                        <span class="text-[9px] font-mono text-slate-500">${ts}</span>
+                        <span class="badge ${isCrit ? 'badge-critical' : 'badge-warning'}">${a.severity}</span>
+                    </div>
+                    <div class="text-[11px] ${isCrit ? 'text-red-200' : 'text-yellow-200'}">${a.message}</div>
+                </div>`;
+            }).join('');
+        } else {
+            feedEl.innerHTML = '<div class="text-xs text-slate-600 italic">System nominal. No alerts.</div>';
         }
 
-        // Fetch immediately, then every 2 seconds
-        fetchStatus();
-        setInterval(fetchStatus, 2000);
+        // Action log
+        if (data.actions_log && data.actions_log.length > 0) {
+            const logEl = document.getElementById('action-log');
+            logEl.innerHTML = data.actions_log.slice(-10).reverse().map(a => {
+                const ts = new Date(a.ts * 1000).toLocaleTimeString();
+                return `<div class="glass-light rounded p-2 text-[11px]">
+                    <span class="text-slate-500 font-mono">${ts}</span>
+                    <span class="text-cyan-400 font-semibold ml-1">${a.node_id}</span>
+                    <div class="text-slate-300 mt-0.5">${a.result}</div>
+                </div>`;
+            }).join('');
+        }
 
+        document.getElementById('last-sync').textContent = new Date().toLocaleTimeString();
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // MAIN FETCH LOOP
+    // ──────────────────────────────────────────────────────────────
+    let fetchErrors = 0;
+
+    async function fetchState() {
+        try {
+            const resp = await fetch('http://localhost:8000/state');
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const data = await resp.json();
+            latestState = data;
+            fetchErrors = 0;
+
+            renderMap(data);
+            updateSidebar(data);
+            if (selectedNodeId) updateNodeDetails();
+
+            // Connection status
+            const connEl = document.getElementById('connection-status');
+            connEl.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-green-500"></span> Connected';
+        } catch (err) {
+            fetchErrors++;
+            console.error('[Fetch Error]', err.message);
+            const connEl = document.getElementById('connection-status');
+            if (fetchErrors > 3) {
+                connEl.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-red-500"></span> Disconnected';
+            } else {
+                connEl.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-yellow-500 animate-pulse"></span> Retrying...';
+            }
+        }
+    }
+
+    fetchState();
+    setInterval(fetchState, 2000);
     </script>
 </body>
 </html>
